@@ -1,7 +1,8 @@
 [package]
 name = "rs_chip8_desktop"
-version = "0.2.0"
-edition = "2024"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 [dependencies]
 rs_chip8_core = { path = "../rs_chip8_core" }

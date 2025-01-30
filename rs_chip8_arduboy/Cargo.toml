@@ -1,9 +1,7 @@
 [package]
-name = "rs_chip8_core"
+name = "rs_chip8_arduboy"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-thiserror = { version = "2.0", default-features = false }
-heapless = "0.8"

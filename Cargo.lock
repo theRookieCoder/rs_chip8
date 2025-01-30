@@ -122,6 +122,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rs_chip8_arduboy"
+version = "0.2.0"
+
+[[package]]
 name = "rs_chip8_core"
 version = "0.2.0"
 dependencies = [

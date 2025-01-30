@@ -8,7 +8,7 @@ use heapless::Vec;
 pub enum Error {
     #[error("Stack overflowed!")]
     StackOverflow,
-    #[error("Illegal instruction: {0:X}")]
+    #[error("Illegal instruction: {0:4X}")]
     IllegalInstruction(u16),
 }
 
