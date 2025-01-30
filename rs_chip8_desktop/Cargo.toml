@@ -1,0 +1,10 @@
+[package]
+name = "rs_chip8_desktop"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+rs_chip8_core = { path = "../rs_chip8_core" }
+thiserror = "2.0"
+sdl3 = "0.14"
+rand = "0.9"

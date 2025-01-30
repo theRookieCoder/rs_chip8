@@ -1,0 +1,8 @@
+[package]
+name = "rs_chip8_core"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+thiserror = { version = "2.0", default-features = false }
+heapless = "0.8"

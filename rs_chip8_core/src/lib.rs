@@ -1,5 +1,18 @@
-use std::random::random;
+#![no_std]
 
+mod default_font;
+
+use heapless::Vec;
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum Error {
+    #[error("Stack overflowed!")]
+    StackOverflow,
+    #[error("Illegal instruction: {0:X}")]
+    IllegalInstruction(u16),
+}
+
+#[derive(Debug, Clone)]
 pub struct MachineState {
     pub display_buffer: [[bool; 32]; 64],
 
@@ -9,7 +22,7 @@ pub struct MachineState {
     index_register: u16,
     var_registers: [u8; 16],
 
-    stack: Vec<u16>,
+    stack: Vec<u16, 16>,
 
     delay_timer: u8,
     pub sound_timer: u8,
@@ -17,9 +30,9 @@ pub struct MachineState {
     previous_keystate: u16,
 }
 
-impl MachineState {
-    pub fn new() -> Self {
-        MachineState {
+impl Default for MachineState {
+    fn default() -> Self {
+        Self {
             display_buffer: [[false; 32]; 64],
 
             ram: [0; 4096],
@@ -28,7 +41,7 @@ impl MachineState {
             index_register: 0,
             var_registers: [0; 16],
 
-            stack: Vec::with_capacity(16),
+            stack: Vec::new(),
 
             delay_timer: 0,
             sound_timer: 0,
@@ -36,9 +49,15 @@ impl MachineState {
             previous_keystate: 0,
         }
     }
+}
+
+impl MachineState {
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn load_default_font(&mut self) {
-        self.load_font(&super::DEFAULT_FONT);
+        self.load_font(&default_font::DEFAULT_FONT);
     }
 
     pub fn load_font(&mut self, font: &[u8; 0x50]) {
@@ -58,7 +77,11 @@ impl MachineState {
         }
     }
 
-    pub fn tick(&mut self, held_keys: impl Fn() -> u16) -> bool {
+    pub fn tick(
+        &mut self,
+        mut held_keys: impl FnMut() -> u16,
+        mut random: impl FnMut() -> u8,
+    ) -> Result<bool, Error> {
         let mut disp_updated = false;
 
         /* FETCH */
@@ -73,25 +96,25 @@ impl MachineState {
         let nn = (instruction & 0x00FF) as u8;
         let nnn = instruction & 0x0FFF;
 
-        #[cfg(debug_assertions)]
-        {
-            // Display machine state
-            println!("PC: 0x{:04X}", self.program_counter - 2);
-            println!("Instruction: {:04X}", instruction);
-            print!("Stack: ");
-            for address in &self.stack {
-                print!("{address:03X}, ");
-            }
-            println!();
-            println!("I : 0x{:04X}", self.index_register);
-            print!("V : ");
-            for var in self.var_registers {
-                print!("0x{var:02X}, ");
-            }
-            println!();
-            println!("VX: 0x{:02X}", self.var_registers[x & 0xF]);
-            println!("VY: 0x{:02X}", self.var_registers[y & 0xF]);
-        }
+        // #[cfg(debug_assertions)]
+        // {
+        //     // Display machine state
+        //     println!("PC: 0x{:04X}", self.program_counter - 2);
+        //     println!("Instruction: {:04X}", instruction);
+        //     print!("Stack: ");
+        //     for address in &self.stack {
+        //         print!("{address:03X}, ");
+        //     }
+        //     println!();
+        //     println!("I : 0x{:04X}", self.index_register);
+        //     print!("V : ");
+        //     for var in self.var_registers {
+        //         print!("0x{var:02X}, ");
+        //     }
+        //     println!();
+        //     println!("VX: 0x{:02X}", self.var_registers[x & 0xF]);
+        //     println!("VY: 0x{:02X}", self.var_registers[y & 0xF]);
+        // }
 
         match ((instruction & 0xF000) >> 12, nn, n) {
             // 00E0
@@ -108,7 +131,9 @@ impl MachineState {
 
             // 2nnn
             (0x2, _, _) => {
-                self.stack.push(self.program_counter);
+                self.stack
+                    .push(self.program_counter)
+                    .map_err(|_| Error::StackOverflow)?;
                 self.program_counter = nnn;
             }
 
@@ -233,7 +258,9 @@ impl MachineState {
             (0xB, _, _) => self.program_counter = nnn + self.var_registers[0x0] as u16,
 
             // Cxnn
-            (0xC, _, _) => self.var_registers[x & 0xF] = random::<u8>() & nn,
+            (0xC, _, _) => {
+                self.var_registers[x & 0xF] = random() & nn;
+            }
 
             // Dxyn
             (0xD, _, _) => {
@@ -343,9 +370,9 @@ impl MachineState {
                 }
             }
 
-            _ => eprintln!("Illegal instruction!"),
+            _ => return Err(Error::IllegalInstruction(instruction)),
         }
 
-        disp_updated
+        Ok(disp_updated)
     }
 }

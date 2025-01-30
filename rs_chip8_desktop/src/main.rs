@@ -1,11 +1,5 @@
-#![feature(duration_constants)]
-#![feature(random)]
-
-mod core;
-mod default_font;
-pub use default_font::DEFAULT_FONT;
-
-use core::MachineState;
+use rand::Rng;
+use rs_chip8_core::MachineState;
 use sdl3::{event::Event, keyboard::Scancode, pixels::Color, rect::Point};
 use std::time::{Duration, Instant};
 
@@ -33,7 +27,16 @@ const KEYMAP: [Scancode; 16] = [
     Scancode::V,
 ];
 
-fn main() -> Result<(), &'static str> {
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+enum Error {
+    Core(#[from] rs_chip8_core::Error),
+    #[error("One argument required")]
+    Argument,
+    IO(#[from] std::io::Error),
+}
+
+fn main() -> Result<(), Error> {
     // Initialise SDL
     let sdl_context = sdl3::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -66,20 +69,17 @@ fn main() -> Result<(), &'static str> {
     let mut machine_state = MachineState::new();
     machine_state.load_default_font();
 
-    let Some(rom_file) = std::env::args().nth(1) else {
-        return Err("No ROM file specified!");
-    };
-    let Ok(program) = std::fs::read(rom_file) else {
-        return Err("File could not be opened");
-    };
+    let rom_file = std::env::args().nth(1).ok_or(Error::Argument)?;
+    let program = std::fs::read(rom_file)?;
 
     machine_state.load_program(&program);
 
     // Time period in nanoseconds for 60 Hz
-    let time_period = Duration::SECOND / 60;
+    let time_period = Duration::from_secs(1) / 60;
     let mut prev_tick = Instant::now();
 
     let mut held_keys: u16 = 0;
+    let mut rng = rand::rng();
     let mut window_update = false;
 
     loop {
@@ -128,7 +128,7 @@ fn main() -> Result<(), &'static str> {
             println!("Held keys: {held_keys:016b}");
             println!("           FEDCBA9876543210\n");
 
-            disp_updated |= machine_state.tick(|| held_keys);
+            disp_updated |= machine_state.tick(|| held_keys, || rng.random())?;
 
             // Render to terminal
             println!();
