@@ -12,7 +12,7 @@ pub struct MachineState {
     stack: Vec<u16>,
 
     delay_timer: u8,
-    sound_timer: u8,
+    pub sound_timer: u8,
 
     previous_keystate: u16,
 }
@@ -58,7 +58,9 @@ impl MachineState {
         }
     }
 
-    pub fn tick(&mut self, held_keys: impl Fn() -> u16) {
+    pub fn tick(&mut self, held_keys: impl Fn() -> u16) -> bool {
+        let mut disp_updated = false;
+
         /* FETCH */
         let instruction: u16 = ((self.ram[self.program_counter as usize] as u16) << 8)
             + (self.ram[(self.program_counter + 1) as usize] as u16);
@@ -93,7 +95,10 @@ impl MachineState {
 
         match ((instruction & 0xF000) >> 12, nn, n) {
             // 00E0
-            (0x0, _, 0x0) if y == 0xE => self.display_buffer = [[false; 32]; 64],
+            (0x0, _, 0x0) if y == 0xE => {
+                self.display_buffer = [[false; 32]; 64];
+                disp_updated = true;
+            }
 
             // 00EE
             (0x0, _, 0xE) if y == 0xE => self.program_counter = self.stack.pop().unwrap_or(0x200),
@@ -227,14 +232,16 @@ impl MachineState {
             // Bnnn
             (0xB, _, _) => self.program_counter = nnn + self.var_registers[0x0] as u16,
 
-            // 0xCxnn
-            (0xC, _, _) => self.var_registers[x & 0xF] = random::<u8>() % nn,
+            // Cxnn
+            (0xC, _, _) => self.var_registers[x & 0xF] = random::<u8>() & nn,
 
             // Dxyn
             (0xD, _, _) => {
                 let x = (self.var_registers[x & 0xF] % 64) as usize;
                 let y = (self.var_registers[y & 0xF] % 32) as usize;
                 let n = n as usize;
+
+                self.var_registers[0xF] = 0;
 
                 for i in 0..n {
                     if y + i > 31 {
@@ -255,6 +262,8 @@ impl MachineState {
                         }
                     }
                 }
+
+                disp_updated = true;
             }
 
             // Ex9E
@@ -336,5 +345,7 @@ impl MachineState {
 
             _ => eprintln!("Illegal instruction!"),
         }
+
+        disp_updated
     }
 }
