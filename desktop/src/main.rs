@@ -1,7 +1,10 @@
 use rand::Rng;
-use rs_chip8_core::MachineState;
+use rs_chip8_core::{DISPLAY_HEIGHT, DISPLAY_WIDTH, MachineState};
 use sdl3::{event::Event, keyboard::Scancode, pixels::Color, rect::Point};
-use std::time::{Duration, Instant};
+use std::{
+    process::ExitCode,
+    time::{Duration, Instant},
+};
 
 const OFF_COLOUR: Color = Color::RGB(0x8f, 0x91, 0x85);
 const ON_COLOUR: Color = Color::RGB(0x11, 0x1d, 0x2b);
@@ -36,7 +39,17 @@ enum Error {
     IO(#[from] std::io::Error),
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> ExitCode {
+    match actual_main() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("Error: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn actual_main() -> Result<(), Error> {
     // Initialise SDL
     let sdl_context = sdl3::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -50,12 +63,12 @@ fn main() -> Result<(), Error> {
         .build()
         .unwrap();
 
-    // Set logical resolution to 64x32
+    // Set logical resolution to the DISPLAY_WIDTH x DISPLAY_HEIGHT
     let mut canvas = window.into_canvas();
     canvas
         .set_logical_size(
-            64,
-            32,
+            DISPLAY_WIDTH as u32,
+            DISPLAY_HEIGHT as u32,
             sdl3::sys::render::SDL_RendererLogicalPresentation::LETTERBOX,
         )
         .unwrap();
@@ -124,27 +137,7 @@ fn main() -> Result<(), Error> {
 
         let mut disp_updated = false;
         for _ in 0..=INSTR_PER_FRAME {
-            print!("\x1b[2J\x1b[H");
-            println!("Held keys: {held_keys:016b}");
-            println!("           FEDCBA9876543210\n");
-
             disp_updated |= machine_state.tick(|| held_keys, || rng.random())?;
-
-            // Render to terminal
-            println!();
-            for y in 0..32 {
-                for x in 0..64 {
-                    print!(
-                        "{}",
-                        if machine_state.display_buffer[x][y] {
-                            "██"
-                        } else {
-                            "  "
-                        }
-                    )
-                }
-                println!();
-            }
         }
 
         if disp_updated || window_update {
@@ -152,8 +145,8 @@ fn main() -> Result<(), Error> {
             canvas.clear();
 
             canvas.set_draw_color(ON_COLOUR);
-            for y in 0..32 {
-                for x in 0..64 {
+            for y in 0..DISPLAY_HEIGHT {
+                for x in 0..DISPLAY_WIDTH {
                     if machine_state.display_buffer[x][y] {
                         canvas.draw_point(Point::new(x as i32, y as i32)).unwrap();
                     }

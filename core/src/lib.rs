@@ -4,17 +4,20 @@ mod default_font;
 
 use heapless::Vec;
 
+pub const DISPLAY_WIDTH: usize = 128;
+pub const DISPLAY_HEIGHT: usize = 64;
+
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum Error {
     #[error("Stack overflowed!")]
     StackOverflow,
-    #[error("Illegal instruction: {0:4X}")]
+    #[error("Illegal instruction: {0:04X}")]
     IllegalInstruction(u16),
 }
 
 #[derive(Debug, Clone)]
 pub struct MachineState {
-    pub display_buffer: [[bool; 32]; 64],
+    pub display_buffer: [[bool; DISPLAY_HEIGHT]; DISPLAY_WIDTH],
 
     ram: [u8; 4096],
 
@@ -28,12 +31,14 @@ pub struct MachineState {
     pub sound_timer: u8,
 
     previous_keystate: u16,
+
+    high_res: bool,
 }
 
 impl Default for MachineState {
     fn default() -> Self {
         Self {
-            display_buffer: [[false; 32]; 64],
+            display_buffer: [[false; DISPLAY_HEIGHT]; DISPLAY_WIDTH],
 
             ram: [0; 4096],
 
@@ -47,6 +52,8 @@ impl Default for MachineState {
             sound_timer: 0,
 
             previous_keystate: 0,
+
+            high_res: false,
         }
     }
 }
@@ -119,7 +126,7 @@ impl MachineState {
         match ((instruction & 0xF000) >> 12, nn, n) {
             // 00E0
             (0x0, _, 0x0) if y == 0xE => {
-                self.display_buffer = [[false; 32]; 64];
+                self.display_buffer = [[false; DISPLAY_HEIGHT]; DISPLAY_WIDTH];
                 disp_updated = true;
             }
 
@@ -264,28 +271,56 @@ impl MachineState {
 
             // Dxyn
             (0xD, _, _) => {
-                let x = (self.var_registers[x & 0xF] % 64) as usize;
-                let y = (self.var_registers[y & 0xF] % 32) as usize;
+                let x = if self.high_res {
+                    todo!();
+                } else {
+                    (self.var_registers[x & 0xF]
+                        % (DISPLAY_WIDTH / if self.high_res { 1 } else { 2 }) as u8)
+                        as usize
+                };
+                let y = (self.var_registers[y & 0xF]
+                    % (DISPLAY_HEIGHT / if self.high_res { 1 } else { 2 }) as u8)
+                    as usize;
+
                 let n = n as usize;
 
                 self.var_registers[0xF] = 0;
 
                 for i in 0..n {
-                    if y + i > 31 {
+                    if DISPLAY_HEIGHT <= if self.high_res { y + i } else { 2 * (y + i) } {
                         break;
                     }
+
                     let sprite_row = self.ram[self.index_register as usize + i];
+
                     for j in 0..8 {
-                        if x + j > 63 {
+                        if DISPLAY_WIDTH <= if self.high_res { x + j } else { 2 * (x + j) } {
                             break;
                         }
+
                         if (sprite_row >> (7 - j)) & 0b1 == 1 {
-                            self.var_registers[0xF] |= if self.display_buffer[x + j][y + i] {
-                                1
+                            if self.high_res {
+                                todo!()
                             } else {
-                                0
-                            };
-                            self.display_buffer[x + j][y + i] = !self.display_buffer[x + j][y + i];
+                                self.var_registers[0xF] |=
+                                    if self.display_buffer[2 * (x + j)][2 * (y + i)] {
+                                        1
+                                    } else {
+                                        0
+                                    };
+
+                                #[expect(clippy::identity_op)]
+                                {
+                                    self.display_buffer[2 * (x + j) + 0][2 * (y + i) + 0] =
+                                        !self.display_buffer[2 * (x + j) + 0][2 * (y + i) + 0];
+                                    self.display_buffer[2 * (x + j) + 0][2 * (y + i) + 1] =
+                                        !self.display_buffer[2 * (x + j) + 0][2 * (y + i) + 1];
+                                    self.display_buffer[2 * (x + j) + 1][2 * (y + i) + 0] =
+                                        !self.display_buffer[2 * (x + j) + 1][2 * (y + i) + 0];
+                                    self.display_buffer[2 * (x + j) + 1][2 * (y + i) + 1] =
+                                        !self.display_buffer[2 * (x + j) + 1][2 * (y + i) + 1];
+                                }
+                            }
                         }
                     }
                 }
