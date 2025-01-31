@@ -3,6 +3,10 @@ target = "avr-atmega32u4.json"
 
 [profile.release]
 panic = "abort"
+lto = "fat"
+
+[profile.debug]
+inherits = "release"
 
 [target.'cfg(target_arch = "avr")']
 runner = "ravedude -c -b 57600 leonardo"

@@ -5,10 +5,10 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-embedded-graphics = "0.8"
+# embedded-graphics = "0.8"
 panic-halt = "1.0"
-ssd1306 = "0.9"
-ufmt = "0.2"
+# ssd1306 = "0.9"
+# ufmt = "0.2"
 
 [dependencies.arduino-hal]
 git = "https://github.com/rahix/avr-hal"

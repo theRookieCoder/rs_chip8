@@ -1,25 +1,13 @@
 #![no_std]
 #![no_main]
 
-use embedded_graphics::{
-    Drawable as _,
-    mono_font::{MonoTextStyleBuilder, iso_8859_13::FONT_5X7},
-    pixelcolor::BinaryColor,
-    prelude::Point,
-    text::Text,
-};
 use panic_halt as _;
-use ssd1306::{
-    I2CDisplayInterface, Ssd1306, mode::DisplayConfig, rotation::DisplayRotation,
-    size::DisplaySize128x64,
-};
 
 #[arduino_hal::entry]
 fn main() -> ! {
     let peripherals = arduino_hal::Peripherals::take().unwrap();
     let pins = arduino_hal::pins!(peripherals);
     let mut serial = arduino_hal::default_serial!(peripherals, pins, 57600);
-    ufmt::uwriteln!(&mut serial, "Hello from Rust over serial!").unwrap();
 
     let mut rgd_led = [
         pins.d10.into_output_high().downgrade(),
@@ -37,35 +25,38 @@ fn main() -> ! {
     let a_button = pins.d7.into_pull_up_input();
     let b_button = pins.d8.into_pull_up_input();
 
-    let mut i2c = arduino_hal::I2c::new(
-        peripherals.TWI,
-        pins.d2.into_pull_up_input(),
-        pins.d3.into_pull_up_input(),
-        50000,
-    );
+    let mut angle = 0.;
+    loop {
+        let mut red = 0.;
+        let mut green = 0.;
+        let mut blue = 0.;
 
-    ufmt::uwriteln!(&mut serial, "Write direction test:\r").unwrap();
-    i2c.i2cdetect(&mut serial, arduino_hal::i2c::Direction::Write)
-        .unwrap();
-    ufmt::uwriteln!(&mut serial, "\r\nRead direction test:\r").unwrap();
-    i2c.i2cdetect(&mut serial, arduino_hal::i2c::Direction::Read)
-        .unwrap();
+        if angle < 60. {
+            red = 255.;
+            green = angle * 4.25 - 0.01;
+            blue = 0.;
+        } else if angle < 120. {
+            red = (120. - angle) * 4.25 - 0.01;
+            green = 255.;
+            blue = 0.;
+        } else if angle < 180. {
+            red = 0.;
+            green = 255.;
+            blue = (angle - 120.) * 4.25 - 0.01;
+        } else if angle < 240. {
+            red = 0.;
+            green = (240. - angle) * 4.25 - 0.01;
+            blue = 255.;
+        } else if angle < 300. {
+            red = (angle - 240.) * 4.25 - 0.01;
+            green = 0.;
+            blue = 255.;
+        } else {
+            red = 255.;
+            green = 0.;
+            blue = (360. - angle) * 4.25 - 0.01;
+        }
 
-    let interface = I2CDisplayInterface::new(i2c);
-    let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
-        .into_buffered_graphics_mode();
-    display.init().unwrap();
-
-    let text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_5X7)
-        .text_color(BinaryColor::On)
-        .build();
-
-    Text::new("Hello world!", Point::zero(), text_style)
-        .draw(&mut display)
-        .unwrap();
-
-    display.flush().unwrap();
-
-    loop {}
+        angle = (angle + 1.) % 360.;
+    }
 }
