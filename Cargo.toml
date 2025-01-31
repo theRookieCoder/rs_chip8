@@ -1,5 +1,5 @@
 [workspace]
-members = ["rs_chip8_arduboy", "rs_chip8_core", "rs_chip8_desktop"]
+members = ["arduboy", "core", "desktop"]
 resolver = "3"
 
 [workspace.package]
