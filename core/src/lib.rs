@@ -113,9 +113,7 @@ impl MachineState {
         &mut self,
         mut held_keys: impl FnMut() -> u16,
         mut random: impl FnMut() -> u8,
-    ) -> Result<bool, Error> {
-        let mut disp_updated = false;
-
+    ) -> Result<(), Error> {
         /* FETCH */
         let instruction: u16 = ((self.ram[self.program_counter as usize] as u16) << 8)
             + (self.ram[(self.program_counter + 1) as usize] as u16);
@@ -152,7 +150,6 @@ impl MachineState {
             // 00E0
             (0x0, _, 0x0) if y == 0xE => {
                 self.display_buffer = [[false; DISPLAY_HEIGHT]; DISPLAY_WIDTH];
-                disp_updated = true;
             }
 
             // 00EE
@@ -415,8 +412,6 @@ impl MachineState {
                         }
                     }
                 }
-
-                disp_updated = true;
             }
 
             // Ex9E
@@ -509,9 +504,9 @@ impl MachineState {
 
                         0x00FF => self.high_res = true,
 
-                        _ if instruction & 0xF0FF == 0xF075 => todo!("Store user flags"),
+                        _ if instruction & 0xF0FF == 0xF075 => (),
 
-                        _ if instruction & 0xF0FF == 0xF085 => todo!("Read user flags"),
+                        _ if instruction & 0xF0FF == 0xF085 => (),
 
                         0x00FB => {
                             if self.high_res {
@@ -560,6 +555,6 @@ impl MachineState {
             }
         }
 
-        Ok(disp_updated)
+        Ok(())
     }
 }

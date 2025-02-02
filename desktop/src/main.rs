@@ -5,6 +5,7 @@ use std::{
     ffi::OsStr,
     path::PathBuf,
     process::ExitCode,
+    thread::sleep,
     time::{Duration, Instant},
 };
 
@@ -101,13 +102,11 @@ fn actual_main() -> Result<(), Error> {
 
     let mut held_keys: u16 = 0;
     let mut rng = rand::rng();
-    let mut update_window = false;
 
     loop {
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => return Ok(()),
-                Event::Window { .. } => update_window = true,
                 Event::KeyDown {
                     scancode: Some(scancode),
                     ..
@@ -143,26 +142,24 @@ fn actual_main() -> Result<(), Error> {
             // TODO: stop the sound
         }
 
-        let mut disp_updated = false;
         for _ in 0..=INSTR_PER_FRAME {
-            disp_updated |= machine_state.tick(|| held_keys, || rng.random())?;
+            machine_state.tick(|| held_keys, || rng.random())?;
         }
 
-        if disp_updated || update_window {
-            canvas.set_draw_color(OFF_COLOUR);
-            canvas.clear();
+        canvas.set_draw_color(OFF_COLOUR);
+        canvas.clear();
 
-            canvas.set_draw_color(ON_COLOUR);
-            for y in 0..DISPLAY_HEIGHT {
-                for x in 0..DISPLAY_WIDTH {
-                    if machine_state.display_buffer[x][y] {
-                        canvas.draw_point(Point::new(x as i32, y as i32)).unwrap();
-                    }
+        canvas.set_draw_color(ON_COLOUR);
+        for y in 0..DISPLAY_HEIGHT {
+            for x in 0..DISPLAY_WIDTH {
+                if machine_state.display_buffer[x][y] {
+                    canvas.draw_point(Point::new(x as i32, y as i32)).unwrap();
                 }
             }
-            canvas.present();
-
-            update_window = false;
         }
+        canvas.present();
+
+        // After this, busy wait for 1 ms - processing time
+        sleep(time_period - Duration::from_millis(1));
     }
 }
