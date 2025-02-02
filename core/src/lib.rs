@@ -83,10 +83,17 @@ impl MachineState {
 
     pub fn load_default_font(&mut self) {
         self.load_font(&default_font::DEFAULT_FONT);
+        if self.system == EmulationSystem::SuperChip {
+            self.load_big_font(&default_font::DEFAULT_BIG_FONT);
+        }
     }
 
     pub fn load_font(&mut self, font: &[u8; 0x50]) {
-        self.ram[0x050..0x0A0].copy_from_slice(font);
+        self.ram[0x050..0x050 + size_of_val(font)].copy_from_slice(font);
+    }
+
+    pub fn load_big_font(&mut self, big_font: &[u8; 0xA0]) {
+        self.ram[0x0A0..0x0A0 + size_of_val(big_font)].copy_from_slice(big_font);
     }
 
     pub fn load_program(&mut self, program: &[u8]) {
@@ -318,7 +325,11 @@ impl MachineState {
                     let x = (self.var_registers[x] % DISPLAY_WIDTH as u8) as usize;
                     let y = (self.var_registers[y] % DISPLAY_HEIGHT as u8) as usize;
 
-                    let n = if n == 0 { 16 } else { n as usize };
+                    let (n, sprite16) = if n == 0 {
+                        (16, true)
+                    } else {
+                        (n as usize, false)
+                    };
 
                     self.var_registers[0xF] = 0;
 
@@ -328,15 +339,29 @@ impl MachineState {
                             break;
                         }
 
-                        let sprite_row = self.ram[self.index_register as usize + i];
+                        let address_offset =
+                            self.index_register as usize + if sprite16 { i * 2 } else { i };
+                        let sprite_row = if sprite16 {
+                            ((self.ram[address_offset] as u16) << 8)
+                                + (self.ram[address_offset + 1] as u16)
+                        } else {
+                            self.ram[self.index_register as usize + i] as u16
+                        };
+
                         let mut collision = false;
 
-                        for j in 0..8 {
+                        for j in 0..if sprite16 { 16 } else { 8 } {
                             if x + j >= DISPLAY_WIDTH {
                                 break;
                             }
 
-                            if (sprite_row >> (7 - j)) & 0b1 == 1 {
+                            let pixel = if sprite16 {
+                                (sprite_row >> (15 - j)) & 0b1 == 1
+                            } else {
+                                (sprite_row >> (7 - j)) & 0b1 == 1
+                            };
+
+                            if pixel {
                                 if self.display_buffer[x + j][y + i] {
                                     collision = true;
                                 }
@@ -489,22 +514,42 @@ impl MachineState {
                         _ if instruction & 0xF0FF == 0xF085 => todo!("Read user flags"),
 
                         0x00FB => {
-                            self.display_buffer.copy_within(0..DISPLAY_WIDTH - 4, 4);
-                            self.display_buffer[0..4].fill([false; DISPLAY_HEIGHT]);
+                            if self.high_res {
+                                self.display_buffer.copy_within(0..DISPLAY_WIDTH - 4, 4);
+                                self.display_buffer[0..4].fill([false; DISPLAY_HEIGHT]);
+                            } else {
+                                self.display_buffer.copy_within(0..DISPLAY_WIDTH - 8, 8);
+                                self.display_buffer[0..8].fill([false; DISPLAY_HEIGHT]);
+                            }
                         }
 
                         0x00FC => {
-                            self.display_buffer.copy_within(4..DISPLAY_WIDTH, 0);
-                            self.display_buffer[DISPLAY_WIDTH - 4..DISPLAY_WIDTH]
-                                .fill([false; DISPLAY_HEIGHT]);
+                            if self.high_res {
+                                self.display_buffer.copy_within(4..DISPLAY_WIDTH, 0);
+                                self.display_buffer[DISPLAY_WIDTH - 4..DISPLAY_WIDTH]
+                                    .fill([false; DISPLAY_HEIGHT]);
+                            } else {
+                                self.display_buffer.copy_within(8..DISPLAY_WIDTH, 0);
+                                self.display_buffer[DISPLAY_WIDTH - 8..DISPLAY_WIDTH]
+                                    .fill([false; DISPLAY_HEIGHT]);
+                            }
                         }
 
                         _ if instruction & 0xFFF0 == 0x00C0 => {
-                            let n = n as usize;
+                            let n = if self.high_res {
+                                n as usize
+                            } else {
+                                n as usize * 2
+                            };
                             for x in (0..DISPLAY_WIDTH).rev() {
                                 self.display_buffer[x].copy_within(0..DISPLAY_HEIGHT - n, n);
                                 self.display_buffer[x][0..n].fill(false);
                             }
+                        }
+
+                        _ if instruction & 0xF0FF == 0xF030 => {
+                            self.index_register =
+                                0x0A0 + (self.var_registers[x & 0xF] & 0xF) as u16 * 10;
                         }
 
                         _ => return Err(Error::IllegalInstruction(instruction)),
