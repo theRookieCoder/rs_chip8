@@ -1,7 +1,9 @@
 use rand::Rng;
-use rs_chip8_core::{DISPLAY_HEIGHT, DISPLAY_WIDTH, MachineState};
+use rs_chip8_core::{DISPLAY_HEIGHT, DISPLAY_WIDTH, EmulationSystem, MachineState};
 use sdl3::{event::Event, keyboard::Scancode, pixels::Color, rect::Point};
 use std::{
+    ffi::OsStr,
+    path::PathBuf,
     process::ExitCode,
     time::{Duration, Instant},
 };
@@ -78,28 +80,34 @@ fn actual_main() -> Result<(), Error> {
     canvas.clear();
     canvas.present();
 
-    // Initialise the machine state and load the default font
-    let mut machine_state = MachineState::new();
+    // Open and read the program
+    let rom_filepath = PathBuf::from(std::env::args().nth(1).ok_or(Error::Argument)?);
+    let program = std::fs::read(&rom_filepath)?;
+
+    // Initialise the machine state
+    // Choose the system to emulate based on the ROM file extension
+    let mut machine_state =
+        MachineState::new(match rom_filepath.extension().and_then(OsStr::to_str) {
+            Some("ch8") => EmulationSystem::Chip8,
+            Some("sc8") => EmulationSystem::SuperChip,
+            _ => EmulationSystem::default(),
+        });
     machine_state.load_default_font();
-
-    let rom_file = std::env::args().nth(1).ok_or(Error::Argument)?;
-    let program = std::fs::read(rom_file)?;
-
     machine_state.load_program(&program);
 
-    // Time period in nanoseconds for 60 Hz
+    // Time period of 60 Hz
     let time_period = Duration::from_secs(1) / 60;
     let mut prev_tick = Instant::now();
 
     let mut held_keys: u16 = 0;
     let mut rng = rand::rng();
-    let mut window_update = false;
+    let mut update_window = false;
 
     loop {
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => return Ok(()),
-                Event::Window { .. } => window_update = true,
+                Event::Window { .. } => update_window = true,
                 Event::KeyDown {
                     scancode: Some(scancode),
                     ..
@@ -140,7 +148,7 @@ fn actual_main() -> Result<(), Error> {
             disp_updated |= machine_state.tick(|| held_keys, || rng.random())?;
         }
 
-        if disp_updated || window_update {
+        if disp_updated || update_window {
             canvas.set_draw_color(OFF_COLOUR);
             canvas.clear();
 
@@ -154,7 +162,7 @@ fn actual_main() -> Result<(), Error> {
             }
             canvas.present();
 
-            window_update = false;
+            update_window = false;
         }
     }
 }

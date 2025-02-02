@@ -11,12 +11,25 @@ pub const DISPLAY_HEIGHT: usize = 64;
 pub enum Error {
     #[error("Stack overflowed!")]
     StackOverflow,
+
     #[error("Illegal instruction: {0:04X}")]
     IllegalInstruction(u16),
+
+    #[error("Program exited")]
+    ProgramExited,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EmulationSystem {
+    #[default]
+    Chip8,
+    SuperChip,
 }
 
 #[derive(Debug, Clone)]
 pub struct MachineState {
+    system: EmulationSystem,
+
     pub display_buffer: [[bool; DISPLAY_HEIGHT]; DISPLAY_WIDTH],
 
     ram: [u8; 4096],
@@ -38,6 +51,8 @@ pub struct MachineState {
 impl Default for MachineState {
     fn default() -> Self {
         Self {
+            system: EmulationSystem::default(),
+
             display_buffer: [[false; DISPLAY_HEIGHT]; DISPLAY_WIDTH],
 
             ram: [0; 4096],
@@ -59,8 +74,11 @@ impl Default for MachineState {
 }
 
 impl MachineState {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(system: EmulationSystem) -> Self {
+        Self {
+            system,
+            ..Default::default()
+        }
     }
 
     pub fn load_default_font(&mut self) {
@@ -178,19 +196,25 @@ impl MachineState {
             // 8xy1
             (0x8, _, 0x1) => {
                 self.var_registers[x & 0xF] |= self.var_registers[y & 0xF];
-                self.var_registers[0xF] = 0;
+                if self.system == EmulationSystem::Chip8 {
+                    self.var_registers[0xF] = 0;
+                }
             }
 
             // 8xy2
             (0x8, _, 0x2) => {
                 self.var_registers[x & 0xF] &= self.var_registers[y & 0xF];
-                self.var_registers[0xF] = 0;
+                if self.system == EmulationSystem::Chip8 {
+                    self.var_registers[0xF] = 0;
+                }
             }
 
             // 8xy3
             (0x8, _, 0x3) => {
                 self.var_registers[x & 0xF] ^= self.var_registers[y & 0xF];
-                self.var_registers[0xF] = 0;
+                if self.system == EmulationSystem::Chip8 {
+                    self.var_registers[0xF] = 0;
+                }
             }
 
             // 8xy4
@@ -239,14 +263,26 @@ impl MachineState {
             // 8xy6
             (0x8, _, 0x6) => {
                 let shifted_out = self.var_registers[y & 0xF] & 0b00000001;
-                self.var_registers[x & 0xF] = self.var_registers[y & 0xF] >> 1;
+                self.var_registers[x & 0xF] =
+                    self.var_registers[if self.system == EmulationSystem::SuperChip {
+                        x
+                    } else {
+                        y
+                    } & 0xF]
+                        >> 1;
                 self.var_registers[0xF] = shifted_out;
             }
 
             // 8xyE
             (0x8, _, 0xE) => {
                 let shifted_out = (self.var_registers[y & 0xF] & 0b10000000) >> 7;
-                self.var_registers[x & 0xF] = self.var_registers[y & 0xF] << 1;
+                self.var_registers[x & 0xF] =
+                    self.var_registers[if self.system == EmulationSystem::SuperChip {
+                        x
+                    } else {
+                        y
+                    } & 0xF]
+                        << 1;
                 self.var_registers[0xF] = shifted_out;
             }
 
@@ -262,7 +298,14 @@ impl MachineState {
             (0xA, _, _) => self.index_register = nnn,
 
             // Bnnn
-            (0xB, _, _) => self.program_counter = nnn + self.var_registers[0x0] as u16,
+            (0xB, _, _) => {
+                self.program_counter = nnn
+                    + self.var_registers[if self.system == EmulationSystem::SuperChip {
+                        x
+                    } else {
+                        0
+                    }] as u16
+            }
 
             // Cxnn
             (0xC, _, _) => {
@@ -271,43 +314,66 @@ impl MachineState {
 
             // Dxyn
             (0xD, _, _) => {
-                let x = if self.high_res {
-                    todo!();
-                } else {
-                    (self.var_registers[x & 0xF]
-                        % (DISPLAY_WIDTH / if self.high_res { 1 } else { 2 }) as u8)
-                        as usize
-                };
-                let y = (self.var_registers[y & 0xF]
-                    % (DISPLAY_HEIGHT / if self.high_res { 1 } else { 2 }) as u8)
-                    as usize;
+                if self.high_res {
+                    let x = (self.var_registers[x] % DISPLAY_WIDTH as u8) as usize;
+                    let y = (self.var_registers[y] % DISPLAY_HEIGHT as u8) as usize;
 
-                let n = n as usize;
+                    let n = if n == 0 { 16 } else { n as usize };
 
-                self.var_registers[0xF] = 0;
+                    self.var_registers[0xF] = 0;
 
-                for i in 0..n {
-                    if DISPLAY_HEIGHT <= if self.high_res { y + i } else { 2 * (y + i) } {
-                        break;
-                    }
-
-                    let sprite_row = self.ram[self.index_register as usize + i];
-
-                    for j in 0..8 {
-                        if DISPLAY_WIDTH <= if self.high_res { x + j } else { 2 * (x + j) } {
+                    for i in 0..n {
+                        if y + i >= DISPLAY_HEIGHT {
+                            self.var_registers[0xF] += (n - i) as u8;
                             break;
                         }
 
-                        if (sprite_row >> (7 - j)) & 0b1 == 1 {
-                            if self.high_res {
-                                todo!()
-                            } else {
-                                self.var_registers[0xF] |=
-                                    if self.display_buffer[2 * (x + j)][2 * (y + i)] {
-                                        1
-                                    } else {
-                                        0
-                                    };
+                        let sprite_row = self.ram[self.index_register as usize + i];
+                        let mut collision = false;
+
+                        for j in 0..8 {
+                            if x + j >= DISPLAY_WIDTH {
+                                break;
+                            }
+
+                            if (sprite_row >> (7 - j)) & 0b1 == 1 {
+                                if self.display_buffer[x + j][y + i] {
+                                    collision = true;
+                                }
+
+                                self.display_buffer[x + j][y + i] =
+                                    !self.display_buffer[x + j][y + i];
+                            }
+                        }
+
+                        if collision {
+                            self.var_registers[0xF] += 1;
+                        }
+                    }
+                } else {
+                    let x = (self.var_registers[x & 0xF] % (DISPLAY_WIDTH / 2) as u8) as usize;
+                    let y = (self.var_registers[y & 0xF] % (DISPLAY_HEIGHT / 2) as u8) as usize;
+
+                    let n = n as usize;
+
+                    self.var_registers[0xF] = 0;
+
+                    for i in 0..n {
+                        if 2 * (y + i) >= DISPLAY_HEIGHT {
+                            break;
+                        }
+
+                        let sprite_row = self.ram[self.index_register as usize + i];
+
+                        for j in 0..8 {
+                            if 2 * (x + j) >= DISPLAY_WIDTH {
+                                break;
+                            }
+
+                            if (sprite_row >> (7 - j)) & 0b1 == 1 {
+                                if self.display_buffer[2 * (x + j)][2 * (y + i)] {
+                                    self.var_registers[0xF] = 1;
+                                }
 
                                 #[expect(clippy::identity_op)]
                                 {
@@ -391,21 +457,62 @@ impl MachineState {
 
             // Fx55
             (0xF, 0x55, _) => {
-                for var in &self.var_registers[..=(x & 0xF)] {
-                    self.ram[self.index_register as usize] = *var;
-                    self.index_register += 1;
+                for (i, var) in self.var_registers[..=(x & 0xF)].iter().enumerate() {
+                    self.ram[self.index_register as usize + i] = *var;
+                }
+                if self.system == EmulationSystem::Chip8 {
+                    self.index_register += (x & 0xF) as u16 + 1;
                 }
             }
 
             // Fx65
             (0xF, 0x65, _) => {
-                for var in &mut self.var_registers[..=(x & 0xF)] {
-                    *var = self.ram[self.index_register as usize];
-                    self.index_register += 1;
+                for (i, var) in self.var_registers[..=(x & 0xF)].iter_mut().enumerate() {
+                    *var = self.ram[self.index_register as usize + i];
+                }
+                if self.system == EmulationSystem::Chip8 {
+                    self.index_register += (x & 0xF) as u16 + 1;
                 }
             }
 
-            _ => return Err(Error::IllegalInstruction(instruction)),
+            _ => {
+                if self.system == EmulationSystem::SuperChip {
+                    match instruction {
+                        0x00FD => return Err(Error::ProgramExited),
+
+                        0x00FE => self.high_res = false,
+
+                        0x00FF => self.high_res = true,
+
+                        _ if instruction & 0xF0FF == 0xF075 => todo!("Store user flags"),
+
+                        _ if instruction & 0xF0FF == 0xF085 => todo!("Read user flags"),
+
+                        0x00FB => {
+                            self.display_buffer.copy_within(0..DISPLAY_WIDTH - 4, 4);
+                            self.display_buffer[0..4].fill([false; DISPLAY_HEIGHT]);
+                        }
+
+                        0x00FC => {
+                            self.display_buffer.copy_within(4..DISPLAY_WIDTH, 0);
+                            self.display_buffer[DISPLAY_WIDTH - 4..DISPLAY_WIDTH]
+                                .fill([false; DISPLAY_HEIGHT]);
+                        }
+
+                        _ if instruction & 0xFFF0 == 0x00C0 => {
+                            let n = n as usize;
+                            for x in (0..DISPLAY_WIDTH).rev() {
+                                self.display_buffer[x].copy_within(0..DISPLAY_HEIGHT - n, n);
+                                self.display_buffer[x][0..n].fill(false);
+                            }
+                        }
+
+                        _ => return Err(Error::IllegalInstruction(instruction)),
+                    }
+                } else {
+                    return Err(Error::IllegalInstruction(instruction));
+                }
+            }
         }
 
         Ok(disp_updated)
