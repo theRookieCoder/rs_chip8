@@ -142,8 +142,8 @@ impl MachineState {
         //         print!("0x{var:02X}, ");
         //     }
         //     println!();
-        //     println!("VX: 0x{:02X}", self.var_registers[x & 0xF]);
-        //     println!("VY: 0x{:02X}", self.var_registers[y & 0xF]);
+        //     println!("VX: 0x{:02X}", self.var_registers[x]);
+        //     println!("VY: 0x{:02X}", self.var_registers[y]);
         // }
 
         match ((instruction & 0xF000) >> 12, nn, n) {
@@ -168,38 +168,38 @@ impl MachineState {
 
             // 3xnn
             (0x3, _, _) => {
-                if self.var_registers[x & 0xF] == nn {
+                if self.var_registers[x] == nn {
                     self.program_counter += 2;
                 }
             }
 
             // 4xnn
             (0x4, _, _) => {
-                if self.var_registers[x & 0xF] != nn {
+                if self.var_registers[x] != nn {
                     self.program_counter += 2;
                 }
             }
 
             // 5xy
             (0x5, _, _) => {
-                if self.var_registers[x & 0xF] == self.var_registers[y & 0xF] {
+                if self.var_registers[x] == self.var_registers[y] {
                     self.program_counter += 2;
                 }
             }
 
             // 9xy
             (0x9, _, _) => {
-                if self.var_registers[x & 0xF] != self.var_registers[y & 0xF] {
+                if self.var_registers[x] != self.var_registers[y] {
                     self.program_counter += 2;
                 }
             }
 
             // 8xy0
-            (0x8, _, 0x0) => self.var_registers[x & 0xF] = self.var_registers[y & 0xF],
+            (0x8, _, 0x0) => self.var_registers[x] = self.var_registers[y],
 
             // 8xy1
             (0x8, _, 0x1) => {
-                self.var_registers[x & 0xF] |= self.var_registers[y & 0xF];
+                self.var_registers[x] |= self.var_registers[y];
                 if self.system == EmulationSystem::Chip8 {
                     self.var_registers[0xF] = 0;
                 }
@@ -207,7 +207,7 @@ impl MachineState {
 
             // 8xy2
             (0x8, _, 0x2) => {
-                self.var_registers[x & 0xF] &= self.var_registers[y & 0xF];
+                self.var_registers[x] &= self.var_registers[y];
                 if self.system == EmulationSystem::Chip8 {
                     self.var_registers[0xF] = 0;
                 }
@@ -215,7 +215,7 @@ impl MachineState {
 
             // 8xy3
             (0x8, _, 0x3) => {
-                self.var_registers[x & 0xF] ^= self.var_registers[y & 0xF];
+                self.var_registers[x] ^= self.var_registers[y];
                 if self.system == EmulationSystem::Chip8 {
                     self.var_registers[0xF] = 0;
                 }
@@ -223,51 +223,49 @@ impl MachineState {
 
             // 8xy4
             (0x8, _, 0x4) => {
-                let overflow = if self.var_registers[x & 0xF] as usize
-                    + self.var_registers[y & 0xF] as usize
-                    > 0xFF
-                {
-                    1
-                } else {
-                    0
-                };
-                self.var_registers[x & 0xF] =
-                    u8::wrapping_add(self.var_registers[x & 0xF], self.var_registers[y & 0xF]);
+                let overflow =
+                    if self.var_registers[x] as usize + self.var_registers[y] as usize > 0xFF {
+                        1
+                    } else {
+                        0
+                    };
+                self.var_registers[x] =
+                    u8::wrapping_add(self.var_registers[x], self.var_registers[y]);
                 self.var_registers[0xF] = overflow;
             }
 
             // 8xy5
             (0x8, _, 0x5) => {
-                let borrow = if self.var_registers[x & 0xF] >= self.var_registers[y & 0xF] {
+                let borrow = if self.var_registers[x] >= self.var_registers[y] {
                     1
                 } else {
                     0
                 };
 
-                self.var_registers[x & 0xF] =
-                    u8::wrapping_sub(self.var_registers[x & 0xF], self.var_registers[y & 0xF]);
+                self.var_registers[x] =
+                    u8::wrapping_sub(self.var_registers[x], self.var_registers[y]);
 
                 self.var_registers[0xF] = borrow;
             }
 
             // 8xy7
             (0x8, _, 0x7) => {
-                let borrow = if self.var_registers[y & 0xF] >= self.var_registers[x & 0xF] {
+                let borrow = if self.var_registers[y] >= self.var_registers[x] {
                     1
                 } else {
                     0
                 };
 
-                self.var_registers[x & 0xF] =
-                    u8::wrapping_sub(self.var_registers[y & 0xF], self.var_registers[x & 0xF]);
+                self.var_registers[x] =
+                    u8::wrapping_sub(self.var_registers[y], self.var_registers[x]);
 
                 self.var_registers[0xF] = borrow;
             }
 
             // 8xy6
             (0x8, _, 0x6) => {
-                let shifted_out = self.var_registers[y & 0xF] & 0b00000001;
-                self.var_registers[x & 0xF] =
+                let shifted_out = self.var_registers[y] & 0b00000001;
+                self.var_registers[x] =
                     self.var_registers[if self.system == EmulationSystem::SuperChip {
                         x
                     } else {
@@ -279,8 +277,8 @@ impl MachineState {
 
             // 8xyE
             (0x8, _, 0xE) => {
-                let shifted_out = (self.var_registers[y & 0xF] & 0b10000000) >> 7;
-                self.var_registers[x & 0xF] =
+                let shifted_out = (self.var_registers[y] & 0b10000000) >> 7;
+                self.var_registers[x] =
                     self.var_registers[if self.system == EmulationSystem::SuperChip {
                         x
                     } else {
@@ -291,12 +289,10 @@ impl MachineState {
             }
 
             // 6xnn
-            (0x6, _, _) => self.var_registers[x & 0xF] = nn,
+            (0x6, _, _) => self.var_registers[x] = nn,
 
             // 7xnn
-            (0x7, _, _) => {
-                self.var_registers[x & 0xF] = u8::wrapping_add(self.var_registers[x & 0xF], nn)
-            }
+            (0x7, _, _) => self.var_registers[x] = u8::wrapping_add(self.var_registers[x], nn),
 
             // Annn
             (0xA, _, _) => self.index_register = nnn,
@@ -313,7 +309,7 @@ impl MachineState {
 
             // Cxnn
             (0xC, _, _) => {
-                self.var_registers[x & 0xF] = random() & nn;
+                self.var_registers[x] = random() & nn;
             }
 
             // Dxyn
@@ -336,27 +332,21 @@ impl MachineState {
                             break;
                         }
 
-                        let address_offset =
-                            self.index_register as usize + if sprite16 { i * 2 } else { i };
                         let sprite_row = if sprite16 {
-                            ((self.ram[address_offset] as u16) << 8)
-                                + (self.ram[address_offset + 1] as u16)
+                            ((self.ram[self.index_register as usize + i * 2] as u16) << 8)
+                                + (self.ram[(self.index_register as usize + i * 2) + 1] as u16)
                         } else {
-                            self.ram[self.index_register as usize + i] as u16
+                            (self.ram[self.index_register as usize + i] as u16) << 8
                         };
 
                         let mut collision = false;
 
-                        for j in 0..if sprite16 { 16 } else { 8 } {
+                        for j in 0..16 {
                             if x + j >= DISPLAY_WIDTH {
                                 break;
                             }
 
-                            let pixel = if sprite16 {
-                                (sprite_row >> (15 - j)) & 0b1 == 1
-                            } else {
-                                (sprite_row >> (7 - j)) & 0b1 == 1
-                            };
+                            let pixel = (sprite_row >> (15 - j)) & 0b1 == 1;
 
                             if pixel {
                                 if self.display_buffer[x + j][y + i] {
@@ -373,8 +363,8 @@ impl MachineState {
                         }
                     }
                 } else {
-                    let x = (self.var_registers[x & 0xF] % (DISPLAY_WIDTH / 2) as u8) as usize;
-                    let y = (self.var_registers[y & 0xF] % (DISPLAY_HEIGHT / 2) as u8) as usize;
+                    let x = (self.var_registers[x] % (DISPLAY_WIDTH / 2) as u8) as usize;
+                    let y = (self.var_registers[y] % (DISPLAY_HEIGHT / 2) as u8) as usize;
 
                     let n = n as usize;
 
@@ -416,29 +406,29 @@ impl MachineState {
 
             // Ex9E
             (0xE, 0x9E, _) => {
-                if (held_keys() >> (self.var_registers[x & 0xF] & 0xF)) & 0b1 == 1 {
+                if (held_keys() >> (self.var_registers[x] & 0xF)) & 0b1 == 1 {
                     self.program_counter += 2;
                 }
             }
 
             // ExA1
             (0xE, 0xA1, _) => {
-                if (held_keys() >> (self.var_registers[x & 0xF] & 0xF)) & 0b1 == 0 {
+                if (held_keys() >> (self.var_registers[x] & 0xF)) & 0b1 == 0 {
                     self.program_counter += 2;
                 }
             }
 
             // Fx07
-            (0xF, 0x07, _) => self.var_registers[x & 0xF] = self.delay_timer,
+            (0xF, 0x07, _) => self.var_registers[x] = self.delay_timer,
 
             // Fx15
-            (0xF, 0x15, _) => self.delay_timer = self.var_registers[x & 0xF],
+            (0xF, 0x15, _) => self.delay_timer = self.var_registers[x],
 
             // Fx18
-            (0xF, 0x18, _) => self.sound_timer = self.var_registers[x & 0xF],
+            (0xF, 0x18, _) => self.sound_timer = self.var_registers[x],
 
             // Fx1E
-            (0xF, 0x1E, _) => self.index_register += self.var_registers[x & 0xF] as u16,
+            (0xF, 0x1E, _) => self.index_register += self.var_registers[x] as u16,
 
             // Fx0A
             (0xF, 0xA, _) => {
@@ -449,7 +439,7 @@ impl MachineState {
 
                     for i in 0..16 {
                         if (key_diff >> i) & 0b1 == 1 {
-                            self.var_registers[x & 0xF] = i;
+                            self.var_registers[x] = i;
                             break;
                         }
                     }
@@ -462,36 +452,34 @@ impl MachineState {
 
             // Fx29
             (0xF, 0x29, _) => {
-                self.index_register = (0x050 + (self.var_registers[x & 0xF] & 0xF) * 5) as u16;
+                self.index_register = (0x050 + (self.var_registers[x] & 0xF) * 5) as u16;
             }
 
             // Fx33
             #[allow(clippy::identity_op)]
             (0xF, 0x33, _) => {
-                self.ram[self.index_register as usize + 2] = (self.var_registers[x & 0xF] / 1) % 10;
-                self.ram[self.index_register as usize + 1] =
-                    (self.var_registers[x & 0xF] / 10) % 10;
-                self.ram[self.index_register as usize + 0] =
-                    (self.var_registers[x & 0xF] / 100) % 10;
+                self.ram[self.index_register as usize + 2] = (self.var_registers[x] / 1) % 10;
+                self.ram[self.index_register as usize + 1] = (self.var_registers[x] / 10) % 10;
+                self.ram[self.index_register as usize + 0] = (self.var_registers[x] / 100) % 10;
             }
 
             // Fx55
             (0xF, 0x55, _) => {
-                for (i, var) in self.var_registers[..=(x & 0xF)].iter().enumerate() {
+                for (i, var) in self.var_registers[..=(x)].iter().enumerate() {
                     self.ram[self.index_register as usize + i] = *var;
                 }
                 if self.system == EmulationSystem::Chip8 {
-                    self.index_register += (x & 0xF) as u16 + 1;
+                    self.index_register += (x) as u16 + 1;
                 }
             }
 
             // Fx65
             (0xF, 0x65, _) => {
-                for (i, var) in self.var_registers[..=(x & 0xF)].iter_mut().enumerate() {
+                for (i, var) in self.var_registers[..=(x)].iter_mut().enumerate() {
                     *var = self.ram[self.index_register as usize + i];
                 }
                 if self.system == EmulationSystem::Chip8 {
-                    self.index_register += (x & 0xF) as u16 + 1;
+                    self.index_register += (x) as u16 + 1;
                 }
             }
 
@@ -509,42 +497,28 @@ impl MachineState {
                         _ if instruction & 0xF0FF == 0xF085 => (),
 
                         0x00FB => {
-                            if self.high_res {
-                                self.display_buffer.copy_within(0..DISPLAY_WIDTH - 4, 4);
-                                self.display_buffer[0..4].fill([false; DISPLAY_HEIGHT]);
-                            } else {
-                                self.display_buffer.copy_within(0..DISPLAY_WIDTH - 8, 8);
-                                self.display_buffer[0..8].fill([false; DISPLAY_HEIGHT]);
-                            }
+                            let n = if self.high_res { 4 } else { 8 };
+                            self.display_buffer.copy_within(0..DISPLAY_WIDTH - n, n);
+                            self.display_buffer[0..n].fill([false; DISPLAY_HEIGHT]);
                         }
 
                         0x00FC => {
-                            if self.high_res {
-                                self.display_buffer.copy_within(4..DISPLAY_WIDTH, 0);
-                                self.display_buffer[DISPLAY_WIDTH - 4..DISPLAY_WIDTH]
-                                    .fill([false; DISPLAY_HEIGHT]);
-                            } else {
-                                self.display_buffer.copy_within(8..DISPLAY_WIDTH, 0);
-                                self.display_buffer[DISPLAY_WIDTH - 8..DISPLAY_WIDTH]
-                                    .fill([false; DISPLAY_HEIGHT]);
-                            }
+                            let n = if self.high_res { 4 } else { 8 };
+                            self.display_buffer.copy_within(n..DISPLAY_WIDTH, 0);
+                            self.display_buffer[DISPLAY_WIDTH - n..DISPLAY_WIDTH]
+                                .fill([false; DISPLAY_HEIGHT]);
                         }
 
                         _ if instruction & 0xFFF0 == 0x00C0 => {
-                            let n = if self.high_res {
-                                n as usize
-                            } else {
-                                n as usize * 2
-                            };
-                            for x in (0..DISPLAY_WIDTH).rev() {
-                                self.display_buffer[x].copy_within(0..DISPLAY_HEIGHT - n, n);
-                                self.display_buffer[x][0..n].fill(false);
+                            let n = if self.high_res { n } else { n * 2 } as usize;
+                            for column in &mut self.display_buffer {
+                                column.copy_within(0..DISPLAY_HEIGHT - n, n);
+                                column[0..n].fill(false);
                             }
                         }
 
                         _ if instruction & 0xF0FF == 0xF030 => {
-                            self.index_register =
-                                0x0A0 + (self.var_registers[x & 0xF] & 0xF) as u16 * 10;
+                            self.index_register = 0x0A0 + (self.var_registers[x] & 0xF) as u16 * 10;
                         }
 
                         _ => return Err(Error::IllegalInstruction(instruction)),
