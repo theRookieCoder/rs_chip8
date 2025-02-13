@@ -6,6 +6,7 @@ edition.workspace = true
 
 [dependencies]
 rs_chip8_core = { path = "../core" }
+parking_lot = "0.12"
 thiserror = "2.0"
 sdl3 = "0.14"
 rand = "0.9"
