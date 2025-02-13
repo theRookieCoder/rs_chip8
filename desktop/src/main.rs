@@ -180,7 +180,10 @@ fn actual_main() -> Result<(), Error> {
     loop {
         let delta = prev_tick.lock().elapsed();
         if delta < time_period {
-            sleep(time_period - delta);
+            if time_period - delta > Duration::from_millis(2) {
+                sleep(time_period - delta - Duration::from_millis(1));
+            }
+            std::hint::spin_loop();
             continue;
         }
         *prev_tick.lock() += time_period;
